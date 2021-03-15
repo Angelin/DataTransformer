@@ -25,25 +25,39 @@ public class FlatFileReader {
         return path.getFileSystem().provider();
     }
 
+    /* @param   resourcePath
+     *          the path to the resources directory
+     * @param   dataFileName
+     *          the data file to be transformed
+     * @param   idFileName
+     *          the config file with row identifiers to be extracted
+     * @param   colConfigFileName
+     *          the config file with columns  to be extracted
+     * @return  the lines from the file as a {@code Stream}
+     */
     public static void processDataFileBy(String resourcePath, String dataFileName, String idFileName,
                                          String colConfigFileName) throws IOException {
         RESOURCE_PATH = resourcePath;
-        
+
+        // Using Path api for non-blocking I/O API for better performance
         Path idPath = Paths.get(RESOURCE_PATH + idFileName);
         Path dataPath = Paths.get(RESOURCE_PATH + dataFileName);
         Stream<String> idStream = Files.lines(idPath, StandardCharsets.UTF_8);
         BufferedWriter bufferedWriter = getWriterFor("temp_" + dataFileName); //write to a new output file
 
-        // large data files
+        // to process large data files
         Stream<String> datalines = Files.lines(dataPath, StandardCharsets.UTF_8);
-        String headers = datalines.findFirst().get();
+        String headers = datalines.findFirst().get(); //reading the first line for headers
         Map<String, String> headerInfo = extractHeaderInfo(RESOURCE_PATH + colConfigFileName, headers);
-        bufferedWriter.write(headerInfo.get("headers")+ "\n");
+        bufferedWriter.write(headerInfo.get("headers")+ "\n"); // write the modified header to the o/p file
 
         //create row filter
         Pattern filterRegex = Pattern.compile(headerInfo.get("filter"));
 
-
+        /*
+        Use Streams for Java runtime to split the main stream into substream and process in parallel leveraging
+        the multi core systems
+         */
         Set<Map.Entry<String, String>> idMap = createConfigMap(idStream);
         idMap.parallelStream().forEach(entrySet -> {
                     try {
@@ -84,23 +98,34 @@ public class FlatFileReader {
         bufferedWriter.close();
     }
 
-
+    /* @param   configStream
+     *          streams containing the with columns  to be extracted
+     * @return  transformed config to structure Set<Map<key, value>> handy for processing
+     */
     private static Set<Map.Entry<String, String>> createConfigMap(Stream<String> configStream) {
         return configStream.map(str -> str.split("\t"))
                 .collect(toMap(str -> str[0], str -> str[1])).entrySet();
     }
 
-    /*
-    @returns header holding new headers and created regex column filter to extract data
+    /* @param   colConfigFileName
+     *          the config file with columns  to be extracted
+     * @param  headerLine
+     *          Line with old headers
+     * @return  Map with
+     *          1. filter : holds regex to grep the required columns
+     *          2. header: modified headers
+     *
      */
     public static Map<String,String> extractHeaderInfo(String colConfigFileName, String headerLine) {
         Map<String,String> headersInfo = new HashMap<String,String>();
 
         try {
-            // exracting requried headers according to the config
+            // reading the column config from the paased file
             Map<String, String> columnConfig = createConfigMap(colConfigFileName);
             StringBuffer extractedHeaders = new StringBuffer();
             StringBuffer colRegexPattern = new StringBuffer("^");
+
+            //creating the regex pattern for the column data to be extracted
             String glue = "";
             for (String header : headerLine.split("\t")) {
                 if (columnConfig.keySet().contains(header)) {
@@ -112,14 +137,14 @@ public class FlatFileReader {
                 glue = "\\t";
             }
             colRegexPattern.append("$");
-            headersInfo.put("filter",colRegexPattern.toString() );
-            headerLine = extractedHeaders.toString(); //overwriting the original header line
+            headersInfo.put("filter",colRegexPattern.toString() ); // returning the filter
 
             //renaming the extracted headers according to the config
             for (Map.Entry<String, String> entry : columnConfig.entrySet()) {
+                //replacing the old cloumns with new column names
                 headerLine = headerLine.replace(entry.getKey(), entry.getValue());
             }
-            headersInfo.put("headers",headerLine);
+            headersInfo.put("headers",headerLine);// returning the modifed headers
         } catch (IOException e) {
             System.out.println(e.getMessage());
         }
@@ -127,6 +152,10 @@ public class FlatFileReader {
         return headersInfo;
     }
 
+    /* @param   colConfigFileName
+     *          filename containing the with columns  to be extracted
+     * @return  transformed config to structure Map, key, value handy for processing
+     */
     public static Map<String, String> createConfigMap(String colConfigFileName) throws IOException {
         Path conConfigPath = Paths.get(colConfigFileName);
         Stream<String> lines = Files.lines(conConfigPath, StandardCharsets.UTF_8);
@@ -135,6 +164,11 @@ public class FlatFileReader {
                                     .collect(toMap(str -> str[0], str -> str[1]));
     }
 
+    /* @param fileName
+     *
+     * @return Buffered writer for the given filename
+     *
+     */
     private static BufferedWriter getWriterFor(String fileName) throws IOException {
         Path writePath = Paths.get(RESOURCE_PATH + fileName);
         //writes the o/p stream using charset utf-8
