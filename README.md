@@ -9,8 +9,8 @@ Java 1.9
 
 ### Installing
 1. Clone the Project
-2. build the project using maven
- Go to Terminall> mvn install to 
+2. Build the project using maven
+ Go to Terminall> mvn install 
 3. Data requirements 
 You need to have below files in the resources folder of the maven project. The project has the below file as a sample where
 ColumnsForExtraction.txt	- Config file with columns to beextract and has new names in the second column
